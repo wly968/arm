@@ -57,9 +57,9 @@
     <material name="cube"     rgba="0.85 0.24 0.10 1"/>
 
     <!-- 机械臂外观网格（只用于渲染；由 make_meshes.py 生成） -->
-    <mesh name="upper_link" file="meshes/upper_link.obj"/>
-    <mesh name="fore_link"  file="meshes/fore_link.obj"/>
-    <mesh name="wrist_link" file="meshes/wrist_link.obj"/>
+    <mesh name="upper_link" file="../meshes/upper_link.obj"/>
+    <mesh name="fore_link"  file="../meshes/fore_link.obj"/>
+    <mesh name="wrist_link" file="../meshes/wrist_link.obj"/>
   </asset>
 
   <default>
@@ -574,11 +574,11 @@
   <!-- 初始姿态：手臂折起停在基座上方（避开两条传送带），夹爪张开 -->
   <keyframe>
     <key name="home"
-         qpos="-1.2 0.20 -1.90 1.20 0.0 0.030 -0.030
+         qpos="1.57 -1.15 2.0 0.725 0.0 0.030 -0.030
                -0.45 0.65 0.40 1 0 0 0
                -0.35 0.65 0.40 1 0 0 0
                -0.25 0.65 0.40 1 0 0 0"
-         ctrl="-1.2 0.20 -1.90 1.20 0.030 -0.030"/>
+         ctrl="1.57 -1.15 2.0 0.725 0.030 -0.030"/>
   </keyframe>
 
 </mujoco>

@@ -31,7 +31,7 @@ import numpy as np
 from belts import BELTS, apply_conveyors
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-HOME = np.array([-1.2, 0.20, -1.90, 1.20, 0.030, -0.030])
+HOME = np.array([1.57, -1.15, 2.0, 0.725, 0.030, -0.030])
 GRIPPER_OPEN = (0.030, -0.030)
 GRIPPER_CLOSED = (0.000, 0.000)
 

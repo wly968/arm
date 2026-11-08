@@ -25,7 +25,7 @@ def main():
     print("✅ 模型加载成功！启动可视化窗口...")
     
     # 3. 启动 MuJoCo 交互式查看器
-    with mujoco.viewer.launch_passive(env.model, env.data) as viewer:
+    with mujoco.viewer.launch_passive(env.model, env.data,show_left_ui=False, show_right_ui=False) as viewer:
         # 隐藏两侧的 UI 面板，让画面更纯净
         viewer.show_left_ui = False
         viewer.show_right_ui = False

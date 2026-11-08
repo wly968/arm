@@ -11,14 +11,15 @@ class CurriculumCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.num_timesteps < 500000 :
-            self.training_env.env_method("_set_dist",0.05)
-            self.training_env.env_method("_set_angle",0.9)
+            self.training_env.env_method("_set_dist",0.04)
+            self.training_env.env_method("_set_angle1",0.9)
         elif self.num_timesteps < 1000000 :
             self.training_env.env_method("_set_dist",0.04)
-            self.training_env.env_method("_set_angle",0.97)
+            self.training_env.env_method("_set_angle1",0.97)
+            self.training_env.env_method("_set_angle2",0.99)
         else :
             self.training_env.env_method("_set_dist",0.03)
-            self.training_env.env_method("_set_angle",0.99)
+            self.training_env.env_method("_set_angle1",0.99)
 
         return True
 
@@ -34,11 +35,12 @@ class ArmEnv(gym.Env):
         self.action_space = spaces.Box(low=-1,high=1.0,shape=(6,),dtype=np.float32)
         self.ctrl_scale = np.array([3.0,3.0,3.0,3.0,3.14,0.03,-0.03],dtype=np.float64)
         self.observation_space = spaces.Box(
-            low=-np.inf,high=np.inf,shape=(22,),dtype=np.float32
+            low=-np.inf,high=np.inf,shape=(23,),dtype=np.float32
         )
 
         self.dist_threshold = 0.05
-        self.angle_threshold = 0.9
+        self.angle1_threshold = 0.9
+        self.angle2_threshold = 0.97
 
         self.steps = 0
         self.max_steps = 150
@@ -65,11 +67,13 @@ class ArmEnv(gym.Env):
         
     def reset(self,seed=None,option=None):
         super().reset(seed=seed)
-        mujoco.mj_resetData(self.model,self.data)
+        
+        key_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_KEY, "home")
+        mujoco.mj_resetDataKeyframe(self.model, self.data, key_id)
         
         #随机生成方块
-        box_x = self.np_random.uniform(-0.50+0.025,0.3-0.025)
-        box_y = self.np_random.uniform(0.4+0.025,0.9-0.025)
+        box_x = self.np_random.uniform(-0.5+0.025,0.25-0.025)
+        box_y = self.np_random.uniform(0.45+0.025,0.85-0.025)
         self.box_pos = np.array([box_x,box_y,0.35+0.025])
         self.data.mocap_pos[self.mocap_id] = self.box_pos
         self.data.mocap_quat[self.mocap_id] = [1.0, 0.0, 0.0, 0.0]
@@ -105,11 +109,11 @@ class ArmEnv(gym.Env):
 
         reward = 0
         if self.phase == 1 :
+            ee_pos = self.data.site_xpos[self.ee_id].copy()
             joint_3_pos = self.data.xanchor[self.arm_joints[3]].copy()
-            target_pos = np.array([self.box_pos[0],self.box_pos[1],self.box_pos[2]+0.25])
-            rel = joint_3_pos-target_pos
+            target_pos = np.array([self.box_pos[0],self.box_pos[1],self.box_pos[2]+0.15])
+            rel = ee_pos-target_pos
             dist = float(np.linalg.norm(rel))
-            ee_pos = self.data.site_xpos[self.ee_id]
             forward = ee_pos-joint_3_pos
             forward = forward/np.linalg.norm(forward)
             angle = float(np.dot(forward,np.array([0,0,-1])))
@@ -117,7 +121,7 @@ class ArmEnv(gym.Env):
             gripper_open_value = float(self.data.qpos[self.finger_qpos_adr])
 
             reward -= dist*2
-            reward -= (angle_error ** 2) * 10.0
+            reward -= (angle_error ** 2) * 5.0
             if (angle>0.98) :reward+=0.1
 
             reward += gripper_open_value
@@ -126,11 +130,51 @@ class ArmEnv(gym.Env):
             reward -= action_change * 0.5
             self.prev_action = action.copy()
 
-            if (dist < self.dist_threshold and angle>self.angle_threshold) :
-                reward+=80
+            if (dist < self.dist_threshold and angle>self.angle1_threshold) :
+                reward+=60
                 self.phase = 2
-                return self._get_obs(),reward,True,False,info
+                return self._get_obs(),reward,False,False,info
+        
+        elif self.phase == 2 :
+            ee_pos = self.data.site_xpos[self.ee_id].copy()
+            joint_3_pos = self.data.xanchor[self.arm_joints[3]].copy()
+            target_pos = np.array([self.box_pos[0],self.box_pos[1],self.box_pos[2]+0.15])
+            rel = ee_pos-target_pos
+            dist = float(np.linalg.norm(rel))
 
+            rot_mat = self.data.geom_xmat[self.box_geom_id].reshape(3,3)
+            box_edge_dir = rot_mat[:2,0].copy()
+            palm_mat = self.data.geom_xmat[self.palm_id].reshape(3,3)
+            gripper_y_axis = palm_mat[:2,1].copy()
+            a = gripper_y_axis/np.linalg.norm(gripper_y_axis)
+            b = box_edge_dir/np.linalg.norm(box_edge_dir)
+            angle2 = abs(float(np.dot(a,b)))
+            angle_error2 = 1.0-angle2
+            
+            forward = ee_pos-joint_3_pos
+            forward = forward/np.linalg.norm(forward)
+            angle1 = float(np.dot(forward,np.array([0,0,-1])))
+            angle_error1 = 1.0 - angle1
+
+            gripper_open_value = float(self.data.qpos[self.finger_qpos_adr])
+
+            action_change = np.sum(np.square(action - self.prev_action))
+            reward -= action_change * 0.5
+            self.prev_action = action.copy()
+
+            reward -= dist*2
+            reward -= (angle_error1 ** 2) * 5.0
+
+            reward -= (angle_error2 ** 2) * 5.0
+            reward -= (0.03-gripper_open_value) * 5
+
+            reward -= 0.5
+
+            if (angle2>self.angle2_threshold and gripper_open_value>0.029):
+                reward += 60
+                self.phase = 3
+                return self._get_obs(),reward,True,truncated,info
+        
         return self._get_obs(), reward, False, truncated, info
         """
         return obs,reward,terminated,truncated,info
@@ -145,22 +189,28 @@ class ArmEnv(gym.Env):
         qpos = self.data.qpos[self.arm_qpos_adr].copy()[:]
         qval = self.data.qvel[self.arm_dof_adr].copy()[:]
         ee_pos = self.data.site_xpos[self.ee_id].copy()
-        target_pos = np.array([self.box_pos[0],self.box_pos[1],self.box_pos[2]+0.25])
+        target_pos = np.array([self.box_pos[0],self.box_pos[1],self.box_pos[2]+0.15])
         rel_pos = target_pos - ee_pos
+        
         rot_mat = self.data.geom_xmat[self.box_geom_id].reshape(3,3)
         box_edge_dir = rot_mat[:2,0].copy()
+        
         palm_mat = self.data.geom_xmat[self.palm_id].reshape(3,3)
         gripper_y_axis = palm_mat[:2,1].copy()
         gripper_open_value = np.array([float(self.data.qpos[self.finger_qpos_adr])])
-        #4+4+3+3+3+2+2+1 = 22
+        phase = np.array([self.phase])
+        #4+4+3+3+3+2+2+1+1 = 23
 
         return np.concatenate(
-            [qpos ,qval ,ee_pos ,target_pos ,rel_pos ,box_edge_dir,gripper_y_axis,gripper_open_value]
+            [qpos ,qval ,ee_pos ,target_pos ,rel_pos ,box_edge_dir,gripper_y_axis,gripper_open_value,phase]
         ).astype(np.float32)
         #数据必须为np.float32
 
     def _set_dist(self,dist):
         self.dist_threshold = dist
 
-    def _set_angle(self,angle) :
-        self.angle_threshold = angle
+    def _set_angle1(self,angle) :
+        self.angle1_threshold = angle
+
+    def _set_angle2(self,angle) :
+        self.angle2_threshold = angle
