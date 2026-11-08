@@ -1,0 +1,223 @@
+<mujoco model="belt_arm_train">
+
+  <!-- ============================================================
+       训练用最简场景：L 形双传送带 + 固定底座三节机械臂 + 平行夹爪
+       与 show_scene.xml 的关节、连杆、碰撞体、质量、执行器完全一致，
+       只是去掉了所有外观网格/装饰件，渲染和加载更轻。
+
+       机械臂：底座固定在 (x=0, y=0)，不再平移。
+               大臂 0.70 + 小臂 0.55（L1+L2=1.25）；最后一节腕连杆竖直，
+               不计入水平可达长度。A 带阴影工作区 0.8×0.5 全部可达。
+
+       坐标：z 向上，单位米
+         - 传送带 A：沿 +X，带面 1.5(x)×0.5(y)，x ∈ [-1.20, +0.30]，y ∈ [0.40, 0.90]
+           阴影工作区：x ∈ [-0.50, 0.30]，y ∈ [0.40, 0.90]
+         - 传送带 B：沿 -Y，与 A 关于 y=x 对称，x ∈ [0.40, 0.90]，y ∈ [-1.20, 0.30]
+       ============================================================ -->
+
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast" gravity="0 0 -9.81"/>
+
+  <visual>
+    <global offwidth="1280" offheight="960"/>
+    <headlight diffuse="0.60 0.60 0.60" ambient="0.35 0.35 0.35" specular="0.10 0.10 0.10"/>
+    <quality shadowsize="2048"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="512" height="512"
+             rgb1="0.16 0.18 0.21" rgb2="0.23 0.26 0.30"/>
+    <material name="floor" texture="grid" texrepeat="12 12"/>
+
+    <texture name="belt_tex" type="2d" builtin="checker" width="128" height="128"
+             rgb1="0.14 0.14 0.16" rgb2="0.20 0.20 0.23"/>
+    <material name="belt" texture="belt_tex" texrepeat="10 1"/>
+
+    <material name="steel"    rgba="0.55 0.58 0.62 1"/>
+    <material name="frame"    rgba="0.20 0.22 0.26 1"/>
+    <material name="arm"      rgba="0.93 0.55 0.13 1"/>
+    <material name="arm_dark" rgba="0.15 0.16 0.19 1"/>
+    <material name="finger"   rgba="0.72 0.74 0.78 1"/>
+    <material name="cube"     rgba="0.82 0.18 0.18 1"/>
+  </asset>
+
+  <default>
+    <default class="arm">
+      <joint damping="0.3" armature="0.01" frictionloss="0.02"/>
+      <geom friction="0.9 0.02 0.002" contype="1" conaffinity="1"/>
+    </default>
+    <!-- 不参与碰撞的外观件（滚筒 / 底座） -->
+    <default class="deco">
+      <geom contype="0" conaffinity="0"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <light name="key" directional="true" pos="2 -2 4" dir="-0.45 0.45 -1"
+           diffuse="0.7 0.7 0.7" specular="0.15 0.15 0.15"/>
+    <light name="fill" directional="true" pos="-2 1 3" dir="0.5 -0.3 -1"
+           diffuse="0.30 0.30 0.35"/>
+
+    <geom name="floor" type="plane" size="3 3 0.05" material="floor"/>
+
+    <camera name="belt_cam" pos="-0.45 0.65 2.55" xyaxes="1 0 0 0 1 0" fovy="45"/>
+
+    <!-- ================= 传送带 A：沿 +X，带面 1.5×0.5 ================= -->
+    <body name="beltA" pos="-1.20 0.65 0">
+      <geom name="beltA_surface" type="box" pos="0.75 0 0.344" size="0.75 0.25 0.006"
+            material="belt" friction="1.3 0.05 0.005" condim="4"/>
+      <geom type="box" pos="0.75  0.26 0.27" size="0.75 0.01 0.09" material="frame"/>
+      <geom type="box" pos="0.75 -0.26 0.27" size="0.75 0.01 0.09" material="frame"/>
+      <geom type="box" pos="0.75 0 0.16" size="0.75 0.25 0.02" material="frame"/>
+      <geom type="cylinder" pos="0.00 0 0.27" size="0.08 0.25" euler="1.5708 0 0"
+            material="steel" class="deco"/>
+      <geom type="cylinder" pos="1.50 0 0.27" size="0.08 0.25" euler="1.5708 0 0"
+            material="steel" class="deco"/>
+      <geom type="box" pos="0.15  0.20 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="0.15 -0.20 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="1.35  0.20 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="1.35 -0.20 0.07" size="0.03 0.03 0.07" material="frame"/>
+    </body>
+
+    <!-- ================= 传送带 B：沿 -Y，与 A 关于 y=x 对称 ================= -->
+    <body name="beltB" pos="0.65 -1.20 0">
+      <geom name="beltB_surface" type="box" pos="0 0.75 0.344" size="0.25 0.75 0.006"
+            material="belt" friction="1.3 0.05 0.005" condim="4"/>
+      <geom type="box" pos=" 0.26 0.75 0.27" size="0.01 0.75 0.09" material="frame"/>
+      <geom type="box" pos="-0.26 0.75 0.27" size="0.01 0.75 0.09" material="frame"/>
+      <geom type="box" pos="0 0.75 0.16" size="0.25 0.75 0.02" material="frame"/>
+      <geom type="cylinder" pos="0 0.00 0.27" size="0.08 0.25" euler="0 1.5708 0"
+            material="steel" class="deco"/>
+      <geom type="cylinder" pos="0 1.50 0.27" size="0.08 0.25" euler="0 1.5708 0"
+            material="steel" class="deco"/>
+      <geom type="box" pos=" 0.20 0.15 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="-0.20 0.15 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos=" 0.20 1.35 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="-0.20 1.35 0.07" size="0.03 0.03 0.07" material="frame"/>
+    </body>
+
+    <!-- ================= 固定底座（外观件，不参与碰撞） ================= -->
+    <!-- r=0.3 的安装底盘，A/B 带近边在 0.4 处，留 0.1 间隙 -->
+    <geom name="base_plate" type="cylinder" pos="0 0 0.006" size="0.300 0.006"
+          material="frame" class="deco"/>
+    <geom name="pedestal" type="cylinder" pos="0 0 0.170" size="0.090 0.170"
+          material="frame" class="deco"/>
+    <geom type="cylinder" pos="0 0 0.008" size="0.130 0.008" material="steel" class="deco"/>
+
+    <!-- ================= 机械臂：固定底座 + 三节 + 平行夹爪 ================= -->
+    <body name="carriage" pos="0 0 0.37" childclass="arm">
+      <geom name="carriage_box" type="box" size="0.08 0.07 0.03" material="arm_dark"/>
+
+      <body name="turret" pos="0 0 0.03">
+        <joint name="joint_yaw" type="hinge" axis="0 0 1" range="-3.1416 3.1416" damping="0.6"/>
+        <geom name="turret_geom" type="cylinder" pos="0 0 0.05" size="0.075 0.05" material="steel"/>
+
+        <body name="shoulder" pos="0 0 0.12">
+          <joint name="joint_shoulder" type="hinge" axis="0 1 0" range="-2.8 2.8" damping="0.6"/>
+          <geom name="shoulder_hub" type="sphere" size="0.055" material="arm_dark"/>
+          <geom name="upper_arm" type="capsule" fromto="0 0 0 0.70 0 0" size="0.035" material="arm"/>
+
+          <body name="elbow" pos="0.7 0 0">
+            <joint name="joint_elbow" type="hinge" axis="0 1 0" range="-2.8 2.8" damping="0.5"/>
+            <geom name="elbow_hub" type="sphere" size="0.045" material="arm_dark"/>
+            <geom name="forearm" type="capsule" fromto="0 0 0 0.55 0 0" size="0.030" material="arm"/>
+
+            <body name="wrist" pos="0.55 0 0">
+              <joint name="joint_wrist" type="hinge" axis="0 1 0" range="-2.0 2.0" damping="0.3"/>
+              <geom name="wrist_hub" type="sphere" size="0.038" material="arm_dark"/>
+              <geom name="wrist_link" type="capsule" fromto="0 0 0 0.10 0 0" size="0.025" material="steel"/>
+
+              <body name="gripper" pos="0.10 0 0">
+                <!-- 工具滚转：绕最后一节腕连杆轴线的 360° 旋转。
+                     目前用 <equality> 锁在 0°，解锁时删掉那条约束、
+                     再给这个关节加一个 position 执行器即可。 -->
+                <joint name="joint_tool_roll" type="hinge" axis="1 0 0"
+                       range="-3.1416 3.1416" damping="0.1"/>
+                <geom name="palm" type="box" pos="0.015 0 0" size="0.015 0.060 0.020"
+                      material="arm_dark" friction="1.0 0.02 0.002"/>
+                <camera name="wrist_cam" pos="0.029 0 0.030" xyaxes="0 -1 0 0 0 1" fovy="72"/>
+                <site name="ee_site" pos="0.070 0 0" size="0.0008" rgba="0 0 0 0"/>
+
+                <body name="finger_L" pos="0.070 0.03 0">
+                  <joint name="joint_finger_L" type="slide" axis="0 1 0"
+                         range="0 0.030" damping="0.2"/>
+                  <geom name="finger_L_geom" type="box" size="0.040 0.010 0.020"
+                        material="finger"
+                        friction="2.0 0.05 0.005" condim="4"/>
+                  <site name="finger_L_pad" pos="0.040 -0.010 0" size="0.0008" rgba="0 0 0 0"/>
+                </body>
+
+                <body name="finger_R" pos="0.070 -0.03 0">
+                  <joint name="joint_finger_R" type="slide" axis="0 1 0"
+                         range="-0.030 0" damping="0.2"/>
+                  <geom name="finger_R_geom" type="box" size="0.040 0.010 0.020"
+                        material="finger"
+                        friction="2.0 0.05 0.005" condim="4"/>
+                  <site name="finger_R_pad" pos="0.040 0.010 0" size="0.0008" rgba="0 0 0 0"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- ================= 方块 ================= -->
+    <body name="cube_0" pos="-0.45 0.65 0.40" mocap="true">
+      <geom name="cube_0_geom" type="box" size="0.025 0.025 0.025"
+            material="cube" friction="1.0 0.02 0.002" condim="4" mass="0.12"/>
+    </body>
+  </worldbody>
+
+  <contact>
+    <exclude body1="turret"   body2="shoulder"/>
+    <exclude body1="shoulder" body2="elbow"/>
+    <exclude body1="elbow"    body2="wrist"/>
+    <exclude body1="shoulder" body2="wrist"/>
+    <exclude body1="wrist"    body2="gripper"/>
+    <exclude body1="gripper"  body2="finger_L"/>
+    <exclude body1="gripper"  body2="finger_R"/>
+    <exclude body1="finger_L" body2="finger_R"/>
+  </contact>
+
+  <!-- 工具滚转暂时锁死：等式约束把 joint_tool_roll 固定在 0。
+       解锁方法：删掉这条约束，并给 joint_tool_roll 加一个执行器。 -->
+  <equality>
+    
+  </equality>
+
+  <actuator>
+    <position name="yaw_pos"      joint="joint_yaw"      kp="160" dampratio="1" ctrlrange="-3.14 3.14" forcerange="-60 60"/>
+    <position name="shoulder_pos" joint="joint_shoulder" kp="300" dampratio="1" ctrlrange="-2.8 2.8" forcerange="-120 120"/>
+    <position name="elbow_pos"    joint="joint_elbow"    kp="220" dampratio="1" ctrlrange="-2.8 2.8" forcerange="-80 80"/>
+    <position name="wrist_pos"    joint="joint_wrist"    kp="90"  dampratio="1" ctrlrange="-2.0 2.0" forcerange="-30 30"/>
+    
+    <!-- 👇 新增：Tool Roll 电机 -->
+    <position name="tool_roll_pos" joint="joint_tool_roll" kp="50" dampratio="1" ctrlrange="-3.14 3.14" forcerange="-20 20"/>
+    
+    <!-- 👇 只保留左手指电机，右手指在 Python 里跟随 -->
+    <position name="finger_l_pos" joint="joint_finger_L" kp="400" dampratio="1" ctrlrange="0 0.030" forcerange="-40 40"/>
+    <position name="finger_r_pos" joint="joint_finger_R" kp="400" dampratio="1" ctrlrange="0 -0.030" forcerange="-40 40"/>
+  </actuator>
+
+  <sensor>
+    <framepos  name="ee_pos"  objtype="site" objname="ee_site"/>
+    <framequat name="ee_quat" objtype="site" objname="ee_site"/>
+    <touch     name="finger_L_touch" site="finger_L_pad"/>
+    <touch     name="finger_R_touch" site="finger_R_pad"/>
+    <jointpos  name="yaw_q"      joint="joint_yaw"/>
+    <jointpos  name="shoulder_q" joint="joint_shoulder"/>
+    <jointpos  name="elbow_q"    joint="joint_elbow"/>
+    <jointpos  name="wrist_q"    joint="joint_wrist"/>
+    <jointpos  name="finger_l_q" joint="joint_finger_L"/>
+    <jointpos  name="finger_r_q" joint="joint_finger_R"/>
+    <jointpos  name="tool_roll_q" joint="joint_tool_roll"/>
+  </sensor>
+
+  <keyframe>
+    <key name="home"
+         qpos="-1.2 0.20 -1.90 1.20 0.0 0.030 -0.030"
+         ctrl="-1.2 0.20 -1.90 1.20 0.0 0.030 -0.030"/>
+  </keyframe>
+
+</mujoco>

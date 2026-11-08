@@ -1,0 +1,32 @@
+# Environments
+.env
+.venv
+env/
+venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDE settings
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Machine Learning Weights & Logs
+saves/
+*.zip
+*.pth
+logs/
+runs/
+tensorboard/
+
+# Mujoco/Rendering temp files
+*.log

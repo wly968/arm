@@ -1,0 +1,584 @@
+<mujoco model="belt_arm_show">
+
+  <!-- ============================================================
+       展示用场景（show_scene）：L 形双传送带 + 三节机械臂 + 平行夹爪
+       与 train_scene.xml 的物理完全一致，只多了外观网格和装饰件。
+       设计语言：暗色碳纤维机身 + 钛合金关节 + 青色光带 + 控制柜/HMI
+       坐标：z 向上，单位米
+         - 传送带 A：沿 +X，带面 1.5(x)×0.5(y)，x ∈ [-1.20, +0.30]，y ∈ [0.40, 0.90]
+           阴影工作区：x ∈ [-0.50, +0.30]（0.8 长）
+         - 传送带 B：沿 -Y，带面 0.5(x)×1.5(y)，x ∈ [+0.40, +0.90]，y ∈ [-1.20, +0.30]
+           （两条带关于 y=x 对称）
+         - 机械臂：固定底座在 (x=0, y=0)，大臂 0.70 / 小臂 0.55
+       带面高度 0.35 m；最后一节腕连杆竖直，不计入水平可达长度
+       ============================================================ -->
+
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast" gravity="0 0 -9.81"/>
+
+  <visual>
+    <global offwidth="1280" offheight="960" fovy="45"/>
+    <headlight diffuse="0.32 0.32 0.35" ambient="0.30 0.30 0.34" specular="0.05 0.05 0.05"/>
+    <rgba haze="0.10 0.13 0.17 1"/>
+    <quality shadowsize="8192" offsamples="4" numslices="64"/>
+  </visual>
+
+  <asset>
+    <!-- 深色影棚背景 -->
+    <texture name="sky" type="skybox" builtin="gradient" width="256" height="256"
+             rgb1="0.08 0.11 0.16" rgb2="0.010 0.012 0.020"/>
+
+    <!-- 地面：深色细腻棋盘 + 高反射，像抛光地坪 -->
+    <texture name="grid" type="2d" builtin="checker" width="512" height="512"
+             rgb1="0.080 0.088 0.100" rgb2="0.094 0.104 0.120"/>
+    <material name="floor" texture="grid" texrepeat="18 18" reflectance="0.18"/>
+
+    <texture name="belt_tex" type="2d" builtin="checker" width="128" height="128"
+             rgb1="0.070 0.075 0.085" rgb2="0.120 0.130 0.150"/>
+    <material name="belt" texture="belt_tex" texrepeat="14 1" reflectance="0.16"/>
+
+    <!-- 材质：碳纤维 / 钛合金 / 橡胶 / 光学 / 发光 -->
+    <material name="steel"    rgba="0.62 0.65 0.70 1" reflectance="0.55"/>
+    <material name="frame"    rgba="0.100 0.110 0.125 1" reflectance="0.25"/>
+    <material name="rail"     rgba="0.160 0.170 0.190 1" reflectance="0.30"/>
+    <material name="arm"      rgba="0.070 0.076 0.086 1" reflectance="0.35"/>
+    <material name="arm_dark" rgba="0.120 0.130 0.145 1" reflectance="0.28"/>
+    <material name="finger"   rgba="0.56 0.59 0.63 1" reflectance="0.42"/>
+    <material name="rubber"   rgba="0.035 0.038 0.042 1" reflectance="0.03"/>
+    <material name="lens"     rgba="0.010 0.018 0.030 1" reflectance="0.65"/>
+    <material name="glow"     rgba="0.10 0.85 1.00 1" emission="0.95"/>
+    <material name="glow_soft" rgba="0.05 0.30 0.40 1" emission="0.45"/>
+    <material name="screen"   rgba="0.02 0.10 0.16 1" emission="0.55"/>
+    <material name="led_g"    rgba="0.20 1.00 0.45 1" emission="0.90"/>
+    <material name="led_b"    rgba="0.20 0.75 1.00 1" emission="0.90"/>
+    <material name="led_r"    rgba="1.00 0.15 0.10 1" emission="0.90"/>
+    <material name="led_a"    rgba="1.00 0.60 0.05 1" emission="0.90"/>
+    <material name="marking"  rgba="0.06 0.42 0.55 1" emission="0.35"/>
+    <material name="cube"     rgba="0.85 0.24 0.10 1"/>
+
+    <!-- 机械臂外观网格（只用于渲染；由 make_meshes.py 生成） -->
+    <mesh name="upper_link" file="meshes/upper_link.obj"/>
+    <mesh name="fore_link"  file="meshes/fore_link.obj"/>
+    <mesh name="wrist_link" file="meshes/wrist_link.obj"/>
+  </asset>
+
+  <default>
+    <default class="arm">
+      <joint damping="0.3" armature="0.01" frictionloss="0.02"/>
+      <geom friction="0.9 0.02 0.002" contype="1" conaffinity="1"/>
+    </default>
+    <!-- 纯外观件：不参与碰撞 -->
+    <default class="deco">
+      <geom contype="0" conaffinity="0"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <!-- 影棚布光：暖白主光 + 冷蓝补光 + 青色轮廓光 + 工作区顶光 -->
+    <light name="key"  directional="true" pos="2 -2 4"   dir="-0.45 0.45 -1"
+           diffuse="0.95 0.95 1.00" specular="0.35 0.35 0.35"/>
+    <light name="fill" directional="true" pos="-2 1 3"   dir="0.5 -0.3 -1"
+           diffuse="0.35 0.40 0.50" specular="0.12 0.14 0.18"/>
+    <light name="rim"  pos="-0.70 -0.70 1.00" diffuse="0.15 0.45 0.65"
+           specular="0.20 0.50 0.70" castshadow="false"/>
+    <light name="work" pos="0.10 0.45 1.15" diffuse="0.45 0.46 0.50"
+           specular="0.10 0.10 0.10" castshadow="false"/>
+
+    <geom name="floor" type="plane" size="3 3 0.05" material="floor"/>
+
+    <!-- 地面导光带（关于 y=x 对称的正方形） -->
+    <geom type="box" pos="-0.15 -1.35 0.0015" size="1.200 0.012 0.0015"
+          material="marking" class="deco" mass="0"/>
+    <geom type="box" pos="-0.15  1.05 0.0015" size="1.200 0.012 0.0015"
+          material="marking" class="deco" mass="0"/>
+    <geom type="box" pos="-1.35 -0.15 0.0015" size="0.012 1.200 0.0015"
+          material="marking" class="deco" mass="0"/>
+    <geom type="box" pos=" 1.05 -0.15 0.0015" size="0.012 1.200 0.0015"
+          material="marking" class="deco" mass="0"/>
+
+    <!-- ========================================================
+         控制柜：深色柜体 + 发光 HMI + 状态指示灯 + 散热格栅
+         ======================================================== -->
+    <body name="cabinet" pos="1.50 0.42 0">
+      <geom type="box" pos="0 0 0.55" size="0.20 0.15 0.55" material="frame"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0 0 1.105" size="0.205 0.155 0.006" material="rail"
+            contype="0" conaffinity="0"/>
+      <!-- 正面（-Y）面板、边框、屏幕 -->
+      <geom type="box" pos="0 -0.152 0.55" size="0.185 0.003 0.53" material="arm_dark"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0 -0.156 0.80" size="0.120 0.002 0.080" material="steel"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0 -0.159 0.80" size="0.113 0.0015 0.073" material="screen"
+            contype="0" conaffinity="0"/>
+      <!-- 状态灯 -->
+      <geom type="box" pos="-0.070 -0.160 0.60" size="0.004 0.001 0.0035" material="led_g"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="-0.050 -0.160 0.60" size="0.004 0.001 0.0035" material="led_a"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="-0.030 -0.160 0.60" size="0.004 0.001 0.0035" material="led_r"
+            contype="0" conaffinity="0"/>
+      <!-- 散热格栅 -->
+      <geom type="box" pos="0.085 -0.160 0.22" size="0.075 0.001 0.0025" material="rubber"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.085 -0.160 0.25" size="0.075 0.001 0.0025" material="rubber"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.085 -0.160 0.28" size="0.075 0.001 0.0025" material="rubber"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.085 -0.160 0.31" size="0.075 0.001 0.0025" material="rubber"
+            contype="0" conaffinity="0"/>
+      <!-- 拉手 -->
+      <geom type="box" pos="0.150 -0.162 0.55" size="0.008 0.002 0.050" material="steel"
+            contype="0" conaffinity="0"/>
+      <!-- 屏幕 UI 元素（细发光条） -->
+      <geom type="box" pos="0.000 -0.1608 0.845" size="0.090 0.0006 0.0022" material="glow"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="-0.015 -0.1608 0.818" size="0.075 0.0006 0.0016" material="glow_soft"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="-0.030 -0.1608 0.800" size="0.060 0.0006 0.0016" material="glow_soft"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.060 -0.1608 0.800" size="0.020 0.0006 0.0150" material="glow_soft"
+            contype="0" conaffinity="0"/>
+      <!-- 柜体正面两侧竖向导光条 -->
+      <geom type="box" pos="-0.192 -0.1605 0.55" size="0.0012 0.0008 0.500" material="glow_soft"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos=" 0.192 -0.1605 0.55" size="0.0012 0.0008 0.500" material="glow_soft"
+            contype="0" conaffinity="0"/>
+      <!-- 铭牌 -->
+      <geom type="box" pos="0.100 -0.1606 0.955" size="0.034 0.0008 0.006" material="steel"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.100 -0.1608 0.955" size="0.004 0.0006 0.004" material="glow"
+            contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- 柜顶状态灯塔 -->
+    <body name="beacon" pos="1.50 0.42 1.11">
+      <geom type="cylinder" pos="0 0 0.015" size="0.038 0.015" material="arm_dark"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0 0 0.045" size="0.030 0.013" material="led_r"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0 0 0.072" size="0.030 0.013" material="led_a"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0 0 0.099" size="0.030 0.013" material="led_g"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0 0 0.118" size="0.033 0.007" material="steel"
+            contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- 安全扫描器 -->
+    <body name="scanner" pos="1.20 -1.15 0">
+      <geom type="cylinder" pos="0 0 0.040" size="0.045 0.040" material="arm_dark"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0 0 0.068" size="0.047 0.005" material="glow"
+            contype="0" conaffinity="0"/>
+    </body>
+
+    <camera name="belt_cam" pos="-0.45 0.65 2.55" xyaxes="1 0 0 0 1 0" fovy="45"/>
+
+    <!-- ========================================================
+         传送带 A：沿 +X，带面 1.5(x)×0.5(y)，x ∈ [-1.20, 0.30]，y ∈ [0.40, 0.90]
+         阴影工作区：x ∈ [-0.50, 0.30]（0.8 长），近边距机械臂轴线 0.4
+         ======================================================== -->
+    <body name="beltA" pos="-1.20 0.65 0">
+      <!-- 带面：物理上就是这块高摩擦平板 -->
+      <geom name="beltA_surface" type="box" pos="0.75 0 0.344" size="0.75 0.25 0.006"
+            material="belt" friction="1.3 0.05 0.005" condim="4"/>
+      <!-- 两侧挡板 -->
+      <geom type="box" pos="0.75  0.26 0.27" size="0.75 0.01 0.09" material="frame"/>
+      <geom type="box" pos="0.75 -0.26 0.27" size="0.75 0.01 0.09" material="frame"/>
+      <!-- 底部机架 -->
+      <geom type="box" pos="0.75 0 0.16" size="0.75 0.25 0.02" material="frame"/>
+      <!-- 两端滚筒（半圆端面），仅外观 -->
+      <geom type="cylinder" pos="0.00 0 0.27" size="0.08 0.25"
+            euler="1.5708 0 0" material="rail" class="deco"/>
+      <geom type="cylinder" pos="1.50 0 0.27" size="0.08 0.25"
+            euler="1.5708 0 0" material="rail" class="deco"/>
+      <!-- 支腿 -->
+      <geom type="box" pos="0.15  0.20 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="0.15 -0.20 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="1.35  0.20 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="1.35 -0.20 0.07" size="0.03 0.03 0.07" material="frame"/>
+    </body>
+
+    <!-- ========================================================
+         传送带 B：沿 -Y，带面 0.5(x)×1.5(y)，x ∈ [0.40, 0.90]，y ∈ [-1.20, 0.30]
+         与传送带 A 关于 y=x 完全对称
+         ======================================================== -->
+    <body name="beltB" pos="0.65 -1.20 0">
+      <geom name="beltB_surface" type="box" pos="0 0.75 0.344" size="0.25 0.75 0.006"
+            material="belt" friction="1.3 0.05 0.005" condim="4"/>
+      <geom type="box" pos=" 0.26 0.75 0.27" size="0.01 0.75 0.09" material="frame"/>
+      <geom type="box" pos="-0.26 0.75 0.27" size="0.01 0.75 0.09" material="frame"/>
+      <geom type="box" pos="0 0.75 0.16" size="0.25 0.75 0.02" material="frame"/>
+      <geom type="cylinder" pos="0 0.00 0.27" size="0.08 0.25"
+            euler="0 1.5708 0" material="rail" class="deco"/>
+      <geom type="cylinder" pos="0 1.50 0.27" size="0.08 0.25"
+            euler="0 1.5708 0" material="rail" class="deco"/>
+      <geom type="box" pos=" 0.20 0.15 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="-0.20 0.15 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos=" 0.20 1.35 0.07" size="0.03 0.03 0.07" material="frame"/>
+      <geom type="box" pos="-0.20 1.35 0.07" size="0.03 0.03 0.07" material="frame"/>
+    </body>
+
+    <!-- ========================================================
+         固定底座：机械臂不再平移，坐在两条带之间的基座上
+         ======================================================== -->
+    <body name="pedestal" pos="0 0 0">
+      <!-- r=0.3 安装底盘，A/B 带近边在 0.4 处 -->
+      <geom type="cylinder" pos="0 0 0.006" size="0.300 0.006" material="rail"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0 0 0.0135" size="0.302 0.0015" material="glow_soft"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0 0 0.025" size="0.165 0.010" material="rail"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0 0 0.045" size="0.150 0.025" material="frame"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0 0 0.190" size="0.100 0.085 0.140" material="arm_dark"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0 0 0.335" size="0.110 0.095 0.005" material="rail"
+            contype="0" conaffinity="0"/>
+      <!-- 基座导光环 / 正面导光条 / 螺栓 -->
+      <geom type="cylinder" pos="0 0 0.045" size="0.152 0.002" material="glow_soft"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0 -0.0865 0.190" size="0.070 0.001 0.003" material="glow_soft"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos=" 0.090  0.075 0.342" size="0.004 0.0015" material="steel"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="-0.090  0.075 0.342" size="0.004 0.0015" material="steel"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos=" 0.090 -0.075 0.342" size="0.004 0.0015" material="steel"
+            contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="-0.090 -0.075 0.342" size="0.004 0.0015" material="steel"
+            contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- ========================================================
+         机械臂：固定底座 + 转台 + 大臂/小臂/腕 + 平行夹爪
+         大臂 0.70 + 小臂 0.55（L1+L2=1.25），最后一节竖直不计入水平可达
+         ======================================================== -->
+    <body name="carriage" pos="0 0 0.37" childclass="arm">
+      <!-- 碰撞体：质量 / 惯量来源，外观由下面的零质量外壳包住 -->
+      <geom name="carriage_box" type="box" size="0.08 0.07 0.03" material="arm_dark"/>
+
+      <!-- ===== 外观：固定基座上的转接座 ===== -->
+      <geom name="carriage_shell" type="box" size="0.084 0.074 0.032" material="arm_dark"
+            mass="0" contype="0" conaffinity="0"/>
+      <geom name="carriage_face" type="box" pos="0.085 0 0" size="0.002 0.058 0.026"
+            material="steel" mass="0" contype="0" conaffinity="0"/>
+      <geom name="carriage_led" type="box" pos="0.0875 0.046 0.012" size="0.001 0.004 0.0018"
+            material="led_g" mass="0" contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0.0875  0.038  0.016" size="0.0035 0.0012" euler="0 1.5708 0"
+            material="steel" mass="0" contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0.0875 -0.038  0.016" size="0.0035 0.0012" euler="0 1.5708 0"
+            material="steel" mass="0" contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0.0875  0.038 -0.016" size="0.0035 0.0012" euler="0 1.5708 0"
+            material="steel" mass="0" contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos="0.0875 -0.038 -0.016" size="0.0035 0.0012" euler="0 1.5708 0"
+            material="steel" mass="0" contype="0" conaffinity="0"/>
+
+      <body name="turret" pos="0 0 0.03">
+        <joint name="joint_yaw" type="hinge" axis="0 0 1" range="-3.1416 3.1416" damping="0.6"/>
+        <geom name="turret_geom" type="cylinder" pos="0 0 0.05" size="0.075 0.05" material="steel"/>
+
+        <!-- ===== 外观：转台 ===== -->
+        <geom type="cylinder" pos="0 0 0.050" size="0.080 0.055" material="arm_dark"
+              mass="0" contype="0" conaffinity="0"/>
+        <geom type="cylinder" pos="0 0 0.002" size="0.087 0.006" material="steel"
+              mass="0" contype="0" conaffinity="0"/>
+        <geom type="cylinder" pos="0 0 0.103" size="0.058 0.005" material="steel"
+              mass="0" contype="0" conaffinity="0"/>
+        <geom type="box" pos="0.080 0 0.055" size="0.010 0.022 0.018" material="rubber"
+              mass="0" contype="0" conaffinity="0"/>
+        <geom type="cylinder" pos="0.092 0 0.055" size="0.008 0.004" euler="0 1.5708 0"
+              material="steel" mass="0" contype="0" conaffinity="0"/>
+        <!-- 转台青色光带 -->
+        <geom type="cylinder" pos="0 0 0.020" size="0.0825 0.0028" material="glow"
+              mass="0" contype="0" conaffinity="0"/>
+
+        <body name="shoulder" pos="0 0 0.12">
+          <joint name="joint_shoulder" type="hinge" axis="0 1 0" range="-2.8 2.8" damping="0.6"/>
+          <geom name="shoulder_hub" type="sphere" size="0.055" material="arm_dark"/>
+          <geom name="upper_arm" type="capsule" fromto="0 0 0 0.70 0 0" size="0.035" material="arm"/>
+
+          <!-- ===== 外观：肩关节壳体 ===== -->
+          <geom type="cylinder" size="0.062 0.058" euler="1.5708 0 0" material="arm_dark"
+                mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos="0  0.0585 0" size="0.045 0.004" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos="0 -0.0585 0" size="0.045 0.004" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos=" 0.021  0.0625  0.021" size="0.0032 0.0012" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos="-0.021  0.0625  0.021" size="0.0032 0.0012" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos=" 0.021  0.0625 -0.021" size="0.0032 0.0012" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos="-0.021  0.0625 -0.021" size="0.0032 0.0012" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos=" 0.021 -0.0625  0.021" size="0.0032 0.0012" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos="-0.021 -0.0625  0.021" size="0.0032 0.0012" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos=" 0.021 -0.0625 -0.021" size="0.0032 0.0012" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <geom type="cylinder" pos="-0.021 -0.0625 -0.021" size="0.0032 0.0012" euler="1.5708 0 0"
+                material="steel" mass="0" contype="0" conaffinity="0"/>
+          <!-- 肩关节青色光带 -->
+          <geom type="cylinder" size="0.0648 0.0032" euler="1.5708 0 0" material="glow"
+                mass="0" contype="0" conaffinity="0"/>
+
+          <!-- ===== 外观：大臂壳体 + 线缆 ===== -->
+          <geom name="upper_shell" type="mesh" mesh="upper_link" material="arm"
+                mass="0" contype="0" conaffinity="0"/>
+          <geom type="capsule" fromto="0.040 0.016 0.048 0.680 0.010 0.043" size="0.0035"
+                material="rubber" mass="0" contype="0" conaffinity="0"/>
+          <geom type="box" pos="0.070 0.016 0.046" size="0.006 0.011 0.005" material="rubber"
+                mass="0" contype="0" conaffinity="0"/>
+          <geom type="box" pos="0.660 0.010 0.041" size="0.006 0.011 0.005" material="rubber"
+                mass="0" contype="0" conaffinity="0"/>
+          <!-- 大臂导光条 -->
+          <geom type="capsule" fromto="0.045 0 0.0468 0.675 0 0.0422" size="0.0022"
+                material="glow" mass="0" contype="0" conaffinity="0"/>
+
+          <body name="elbow" pos="0.70 0 0">
+            <joint name="joint_elbow" type="hinge" axis="0 1 0" range="-2.8 2.8" damping="0.5"/>
+            <geom name="elbow_hub" type="sphere" size="0.045" material="arm_dark"/>
+            <geom name="forearm" type="capsule" fromto="0 0 0 0.55 0 0" size="0.030" material="arm"/>
+
+            <!-- ===== 外观：肘关节壳体 ===== -->
+            <geom type="cylinder" size="0.060 0.052" euler="1.5708 0 0" material="arm_dark"
+                  mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos="0  0.0525 0" size="0.040 0.004" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos="0 -0.0525 0" size="0.040 0.004" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos=" 0.018  0.0565  0.018" size="0.0030 0.0012" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos="-0.018  0.0565  0.018" size="0.0030 0.0012" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos=" 0.018  0.0565 -0.018" size="0.0030 0.0012" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos="-0.018  0.0565 -0.018" size="0.0030 0.0012" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos=" 0.018 -0.0565  0.018" size="0.0030 0.0012" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos="-0.018 -0.0565  0.018" size="0.0030 0.0012" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos=" 0.018 -0.0565 -0.018" size="0.0030 0.0012" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <geom type="cylinder" pos="-0.018 -0.0565 -0.018" size="0.0030 0.0012" euler="1.5708 0 0"
+                  material="steel" mass="0" contype="0" conaffinity="0"/>
+            <!-- 肘关节青色光带 -->
+            <geom type="cylinder" size="0.0628 0.0028" euler="1.5708 0 0" material="glow"
+                  mass="0" contype="0" conaffinity="0"/>
+
+            <!-- ===== 外观：小臂壳体 + 线缆 ===== -->
+            <geom name="fore_shell" type="mesh" mesh="fore_link" material="arm"
+                  mass="0" contype="0" conaffinity="0"/>
+            <geom type="capsule" fromto="0.035 0.014 0.044 0.530 0.009 0.038" size="0.0032"
+                  material="rubber" mass="0" contype="0" conaffinity="0"/>
+            <geom type="box" pos="0.065 0.014 0.042" size="0.005 0.010 0.0045" material="rubber"
+                  mass="0" contype="0" conaffinity="0"/>
+            <geom type="box" pos="0.515 0.009 0.036" size="0.005 0.010 0.0045" material="rubber"
+                  mass="0" contype="0" conaffinity="0"/>
+            <!-- 小臂导光条 -->
+            <geom type="capsule" fromto="0.045 0 0.0428 0.525 0 0.0378" size="0.0020"
+                  material="glow" mass="0" contype="0" conaffinity="0"/>
+
+            <body name="wrist" pos="0.55 0 0">
+              <joint name="joint_wrist" type="hinge" axis="0 1 0" range="-2.0 2.0" damping="0.3"/>
+              <geom name="wrist_hub" type="sphere" size="0.038" material="arm_dark"/>
+              <geom name="wrist_link" type="capsule" fromto="0 0 0 0.10 0 0" size="0.025" material="steel"/>
+
+              <!-- ===== 外观：腕关节壳体 + 工具法兰 ===== -->
+              <geom type="cylinder" size="0.052 0.046" euler="1.5708 0 0" material="arm_dark"
+                    mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos="0  0.0465 0" size="0.032 0.004" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos="0 -0.0465 0" size="0.032 0.004" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos=" 0.016  0.0505  0.016" size="0.0028 0.0012" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos="-0.016  0.0505  0.016" size="0.0028 0.0012" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos=" 0.016  0.0505 -0.016" size="0.0028 0.0012" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos="-0.016  0.0505 -0.016" size="0.0028 0.0012" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos=" 0.016 -0.0505  0.016" size="0.0028 0.0012" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos="-0.016 -0.0505  0.016" size="0.0028 0.0012" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos=" 0.016 -0.0505 -0.016" size="0.0028 0.0012" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos="-0.016 -0.0505 -0.016" size="0.0028 0.0012" euler="1.5708 0 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <!-- 腕关节青色光带 -->
+              <geom type="cylinder" size="0.0548 0.0025" euler="1.5708 0 0" material="glow"
+                    mass="0" contype="0" conaffinity="0"/>
+
+              <geom name="wrist_shell" type="mesh" mesh="wrist_link" material="steel"
+                    mass="0" contype="0" conaffinity="0"/>
+              <geom type="cylinder" pos="0.094 0 0" size="0.030 0.006" euler="0 1.5708 0"
+                    material="steel" mass="0" contype="0" conaffinity="0"/>
+              <!-- 工具法兰发光圈 -->
+              <geom type="cylinder" pos="0.092 0 0" size="0.0315 0.0012" euler="0 1.5708 0"
+                    material="glow" mass="0" contype="0" conaffinity="0"/>
+
+              <body name="gripper" pos="0.10 0 0">
+                <!-- 工具滚转：绕最后一节腕连杆轴线的 360° 旋转。
+                     目前用 <equality> 锁在 0°，解锁时删掉那条约束、
+                     再给这个关节加一个 position 执行器即可。 -->
+                <joint name="joint_tool_roll" type="hinge" axis="1 0 0"
+                       range="-3.1416 3.1416" damping="0.1"/>
+                <geom name="palm" type="box" pos="0.015 0 0" size="0.015 0.060 0.020"
+                      material="arm_dark" friction="1.0 0.02 0.002"/>
+
+                <!-- ===== 外观：掌心 / 前端板 / 导向条 / 相机 ===== -->
+                <geom type="box" pos="0.015 0 0" size="0.016 0.062 0.021" material="arm_dark"
+                      mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.032 0 0" size="0.003 0.056 0.023" material="steel"
+                      mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.020 0  0.0235" size="0.030 0.062 0.0015" material="steel"
+                      mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.020 0 -0.0235" size="0.030 0.062 0.0015" material="steel"
+                      mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.014 0 0.030" size="0.010 0.020 0.009" material="rubber"
+                      mass="0" contype="0" conaffinity="0"/>
+                <geom type="cylinder" pos="0.022 0 0.030" size="0.008 0.0015" euler="0 1.5708 0"
+                      material="led_b" mass="0" contype="0" conaffinity="0"/>
+                <geom type="cylinder" pos="0.025 0 0.030" size="0.006 0.0035" euler="0 1.5708 0"
+                      material="lens" mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.031 0.050 0.010" size="0.0015 0.003 0.0015" material="led_g"
+                      mass="0" contype="0" conaffinity="0"/>
+                <!-- 镜头环形补光灯（8 颗） -->
+                <geom type="box" pos="0.0245  0.00950 0.03000" size="0.0009 0.0009 0.0009" material="glow" mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.0245  0.00672 0.03672" size="0.0009 0.0009 0.0009" material="glow" mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.0245  0.00000 0.03950" size="0.0009 0.0009 0.0009" material="glow" mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.0245 -0.00672 0.03672" size="0.0009 0.0009 0.0009" material="glow" mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.0245 -0.00950 0.03000" size="0.0009 0.0009 0.0009" material="glow" mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.0245 -0.00672 0.02328" size="0.0009 0.0009 0.0009" material="glow" mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.0245  0.00000 0.02050" size="0.0009 0.0009 0.0009" material="glow" mass="0" contype="0" conaffinity="0"/>
+                <geom type="box" pos="0.0245  0.00672 0.02328" size="0.0009 0.0009 0.0009" material="glow" mass="0" contype="0" conaffinity="0"/>
+                <camera name="wrist_cam" pos="0.029 0 0.030" xyaxes="0 -1 0 0 0 1" fovy="72"/>
+                <site name="ee_site" pos="0.070 0 0" size="0.0008" rgba="0 0 0 0"/>
+
+                <!-- 左手指：+Y 方向平移，水平开合 -->
+                <body name="finger_L" pos="0.070 0.03 0">
+                  <joint name="joint_finger_L" type="slide" axis="0 1 0"
+                         range="0 0.030" damping="0.2"/>
+                  <geom name="finger_L_geom" type="box" size="0.040 0.010 0.020"
+                        material="finger"
+                        friction="2.0 0.05 0.005" condim="4"/>
+                  <!-- 外观：爪块 + 橡胶垫 + 外侧槽 -->
+                  <geom type="box" size="0.0405 0.0105 0.0205" material="finger"
+                        mass="0" contype="0" conaffinity="0"/>
+                  <geom type="box" pos="0 -0.0109 0" size="0.032 0.0004 0.016" material="rubber"
+                        mass="0" contype="0" conaffinity="0"/>
+                  <geom type="box" pos="0 0.0107 0.008" size="0.030 0.0005 0.003" material="glow_soft"
+                        mass="0" contype="0" conaffinity="0"/>
+                  <site name="finger_L_pad" pos="0.040 -0.010 0" size="0.0008" rgba="0 0 0 0"/>
+                </body>
+
+                <!-- 右手指：-Y 方向平移 -->
+                <body name="finger_R" pos="0.070 -0.03 0">
+                  <joint name="joint_finger_R" type="slide" axis="0 1 0"
+                         range="-0.030 0" damping="0.2"/>
+                  <geom name="finger_R_geom" type="box" size="0.040 0.010 0.020"
+                        material="finger"
+                        friction="2.0 0.05 0.005" condim="4"/>
+                  <geom type="box" size="0.0405 0.0105 0.0205" material="finger"
+                        mass="0" contype="0" conaffinity="0"/>
+                  <geom type="box" pos="0 0.0109 0" size="0.032 0.0004 0.016" material="rubber"
+                        mass="0" contype="0" conaffinity="0"/>
+                  <geom type="box" pos="0 -0.0107 0.008" size="0.030 0.0005 0.003" material="glow_soft"
+                        mass="0" contype="0" conaffinity="0"/>
+                  <site name="finger_R_pad" pos="0.040 0.010 0" size="0.0008" rgba="0 0 0 0"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- ========================================================
+         待搬运的方块（自由刚体）
+         ======================================================== -->
+    <body name="cube_0" pos="-0.45 0.65 0.40">
+      <freejoint name="cube_0_joint"/>
+      <geom name="cube_0_geom" type="box" size="0.025 0.025 0.025"
+            material="cube" friction="1.0 0.02 0.002" condim="4" mass="0.12"/>
+    </body>
+    <body name="cube_1" pos="-0.35 0.65 0.40">
+      <freejoint name="cube_1_joint"/>
+      <geom name="cube_1_geom" type="box" size="0.025 0.025 0.025"
+            material="cube" friction="1.0 0.02 0.002" condim="4" mass="0.12"/>
+    </body>
+    <body name="cube_2" pos="-0.25 0.65 0.40">
+      <freejoint name="cube_2_joint"/>
+      <geom name="cube_2_geom" type="box" size="0.025 0.025 0.025"
+            material="cube" friction="1.0 0.02 0.002" condim="4" mass="0.12"/>
+    </body>
+  </worldbody>
+
+  <!-- 相邻连杆在关节处本来就连在一起，关掉自碰撞，避免折叠时互相顶住 -->
+  <contact>
+    <exclude body1="carriage" body2="turret"/>
+    <exclude body1="turret"   body2="shoulder"/>
+    <exclude body1="shoulder" body2="elbow"/>
+    <exclude body1="elbow"    body2="wrist"/>
+    <exclude body1="shoulder" body2="wrist"/>
+    <exclude body1="wrist"    body2="gripper"/>
+    <exclude body1="gripper"  body2="finger_L"/>
+    <exclude body1="gripper"  body2="finger_R"/>
+    <exclude body1="finger_L" body2="finger_R"/>
+  </contact>
+
+  <!-- 工具滚转暂时锁死：等式约束把 joint_tool_roll 固定在 0。
+       解锁方法：删掉这条约束，并给 joint_tool_roll 加一个执行器。 -->
+  <equality>
+    <joint joint1="joint_tool_roll" polycoef="0 0 0 0 0"/>
+  </equality>
+
+  <actuator>
+    <!-- 位置伺服；dampratio=1 让每个关节接近临界阻尼，控制更稳 -->
+    <position name="yaw_pos"      joint="joint_yaw"      kp="160" dampratio="1"
+              ctrlrange="-3.14 3.14" forcerange="-60 60"/>
+    <position name="shoulder_pos" joint="joint_shoulder" kp="300" dampratio="1"
+              ctrlrange="-2.8 2.8"   forcerange="-120 120"/>
+    <position name="elbow_pos"    joint="joint_elbow"    kp="220" dampratio="1"
+              ctrlrange="-2.8 2.8"   forcerange="-80 80"/>
+    <position name="wrist_pos"    joint="joint_wrist"    kp="90"  dampratio="1"
+              ctrlrange="-2.0 2.0"   forcerange="-30 30"/>
+    <position name="finger_l_pos" joint="joint_finger_L" kp="400" dampratio="1"
+              ctrlrange="0 0.030"    forcerange="-40 40"/>
+    <position name="finger_r_pos" joint="joint_finger_R" kp="400" dampratio="1"
+              ctrlrange="-0.030 0"   forcerange="-40 40"/>
+  </actuator>
+
+  <sensor>
+    <framepos  name="ee_pos"  objtype="site" objname="ee_site"/>
+    <framequat name="ee_quat" objtype="site" objname="ee_site"/>
+    <touch     name="finger_L_touch" site="finger_L_pad"/>
+    <touch     name="finger_R_touch" site="finger_R_pad"/>
+    <jointpos  name="yaw_q"      joint="joint_yaw"/>
+    <jointpos  name="shoulder_q" joint="joint_shoulder"/>
+    <jointpos  name="elbow_q"    joint="joint_elbow"/>
+    <jointpos  name="wrist_q"    joint="joint_wrist"/>
+    <jointpos  name="finger_l_q" joint="joint_finger_L"/>
+    <jointpos  name="finger_r_q" joint="joint_finger_R"/>
+    <jointpos  name="tool_roll_q" joint="joint_tool_roll"/>
+  </sensor>
+
+  <!-- 初始姿态：手臂折起停在基座上方（避开两条传送带），夹爪张开 -->
+  <keyframe>
+    <key name="home"
+         qpos="-1.2 0.20 -1.90 1.20 0.0 0.030 -0.030
+               -0.45 0.65 0.40 1 0 0 0
+               -0.35 0.65 0.40 1 0 0 0
+               -0.25 0.65 0.40 1 0 0 0"
+         ctrl="-1.2 0.20 -1.90 1.20 0.030 -0.030"/>
+  </keyframe>
+
+</mujoco>
