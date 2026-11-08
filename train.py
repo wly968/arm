@@ -8,12 +8,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from envs.arm_env import ArmEnv,CurriculumCallback
 
 N_ENVS = 16
-TOTAL_STEPS = 1000_000
+TOTAL_STEPS = 1_000_000
 
 if __name__ == "__main__":
     env = make_vec_env(ArmEnv, n_envs=N_ENVS, seed=0)
 
-    model = PPO.load("D:/programming/python/mujoco_xml/scene/saves/phase1.zip",env=env)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(base_dir, "saves", "phase2.zip")
+    model = PPO.load(model_path,env=env)
     '''
     model = PPO(
         "MlpPolicy",
